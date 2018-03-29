@@ -1,0 +1,146 @@
+---
+title: "Text Analysis Milestone Report"
+author: "Alex Robinson"
+date: "27 March 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("./utilities.R")
+source("./tidy_utilities.R")
+```
+
+## Data Set Background
+
+The data is taken from the SwiftKey corpora of publicly available text, scraped
+from twitter, blog and news websites. The data used here is the US English data
+set (en_US) and consists of 3 files.
+
+A brief overview of the data including the number of lines, words and characters
+in each file is included below:
+
+```{r highLevel, cache = TRUE, include = FALSE}
+blogs <- readFile(srcbl)
+news <- readFile(srcnw)
+twitter <- readFile(srctw)
+
+overview <- produceSummary(blogs, news, twitter)
+```
+
+```{r displaySummary, echo = FALSE}
+overview
+```
+
+Of possible interest is that the longer blog posts seem to have been truncated 
+at 1307 characters.
+
+A sample from each of the files is shown here:
+
+```{r exampleData, echo = FALSE}
+head(blogs, 3)
+head(news, 3)
+head(twitter, 3)
+```
+
+Further analysis of the text showed that certain characters were causing read
+issues and so alternative characters for the apostrophe (') and quote (") 
+characters were replaced with the standard ASCII version.
+
+## Tidy Text
+
+Using the principles set out by Julia Silge and David Robinson in "Text Mining 
+in R: a Tidy Approach" (https://www.tidytextmining.com/index.html) a training
+subset of the data was anlysed.
+
+```{r trainingSets, cache = TRUE, include = FALSE }
+set.seed(1337)
+
+# smaller test set for demo purposes
+ds_blogs <- splitDataSet(blogs, p = 0.1)
+ds_news <- splitDataSet(news, p = 0.1)
+ds_twitter <- splitDataSet(twitter, p = 0.1)
+
+proc_blogs <- processTbl(ds_blogs$train, source = "blogs")
+proc_news <- processTbl(ds_news$train, source = "news")
+proc_twitter <- processTbl(ds_twitter$train, source = "twitter")
+```
+
+Stop words (i.e. very frequent words e.g. "a", "of", "the") were removed, along 
+with words consisting entirely of numeric or non-alpha numeric values and also
+"lol" and "rt" which appear at very high levels in the twitter source in
+particular.
+
+## Correlation Between Sources
+
+The proportion of the words in the blogs and news corpus was plotted against 
+the proportion in twitter to start to visualise the data.
+
+```{r freqs, cache = TRUE, echo = FALSE, warning = FALSE}
+tidy_sets <- list(blogs = proc_blogs$tidy, news = proc_news$tidy,
+                  twitter = proc_twitter$tidy)
+freq <- getFrequencies(tidy_sets)
+plotIt(freq)
+
+```
+
+**Figure 1 - Similarity Between Corpora**
+
+Figure 1 shows the similarity between different sources. The closer a word
+appears to the central dotted line the more similar its proportion to the
+proportion of that word in twitter.
+
+So at the high levels "people" and "day" appear at fairly consistent level 
+across all 3 sources.
+
+Twitter has a higher proportion of slangy words like "congrats" and "kinda"
+than either blogs (which favours "bible" and "baking") or news (which calls 
+out "county" and "percent").
+
+The spread of the cloud of points measures the correlation (or lack therof)
+between the sources and suggests that, as might be expected the blogs' language
+correlates more closely with twitter than does that of the news source.
+
+This is confirmed by looking at the correlation values for news:
+
+```{r correlationNews, echo = FALSE}
+cor.test(data = freq[freq$source == "news", ], ~ proportion + twitter)
+```
+
+and blogs:
+
+```{r correlationBlogs, echo = FALSE}
+cor.test(data = freq[freq$source == "blogs", ], ~ proportion + twitter)
+```
+
+## Frequently Occurring Words
+
+For this analysis the data was stemmed using the SnowballC package. Stemming 
+removes commonly occurring inflected endings to extract the word's core so that
+for example: "day" and "days" are counted as the same word.
+
+With stop words removed the most frequently occurring words are shown in the 
+chart below.
+
+NOTE: The stems of words were reconstitued for display purposes e.g. to show
+"people" rather than "peopl".
+
+```{r topWords, cache = TRUE, echo = FALSE}
+stem_sets <- list(blogs = proc_blogs$stemmed, news = proc_news$stemmed,
+                  twitter = proc_twitter$stemmed)
+topW <- getTopWords(stem_sets, n = 30, dictionary = proc_twitter$dictionary)
+intr <- topW[topW$source == "news",] %>% 
+                arrange(desc(cumulative)) %>% 
+                select(word, cumulative)
+intr <- data_frame(cumulative = intr$cumulative)
+intr <- intr %>% slice(5)
+barPlotIt(topW, intr = intr$cumulative)
+```
+
+**Figure 2 - Frequently Occurring Words**
+
+"Time", "day", "love" and "people" occur significantly more frequently in the 
+sources than any other words.
+
+"Love" is an interesting case as it occurs far more frequently in the blogs and
+twitter sources but hardly at all in the news source.
