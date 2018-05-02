@@ -44,20 +44,26 @@ produceSummary <- function(blogs, news, twitter){
 
 }
 
-splitDataSet <- function(tbl, p = 0.75){
+splitDataSet <- function(tbl, p = 0.75, train.only = FALSE){
         train.idx <- createDataPartition(tbl$words, 
                                          p = p,
                                          list = FALSE)
         train <- tbl[train.idx, ]
-        test <- tbl[-train.idx, ]
-        val.idx <- createDataPartition(test$words,
-                                       p = 0.5, 
-                                       list = FALSE)
-        validation <- test[val.idx, ]
-        test <- test[-val.idx, ]
-        
-        dSets <- list(train = train, test = test, 
-                        validation = validation)
+        if(!train.only){
+                test <- tbl[-train.idx, ]
+                val.idx <- createDataPartition(test$words,
+                                               p = 0.5, 
+                                               list = FALSE)
+                validation <- test[val.idx, ]
+                test <- test[-val.idx, ]
+                
+                dSets <- list(train = train, test = test, 
+                                validation = validation)
+        }
+        else
+        {
+                dSets <- list(train = train)
+        }
         dSets
 }
 
@@ -110,6 +116,7 @@ extractDataSet <- function(){
         }
         
 }
+
 
 
 

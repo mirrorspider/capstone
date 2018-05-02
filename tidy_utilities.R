@@ -47,9 +47,9 @@ removeNumbers <- function(textcol){
         num.pattern <- "\\b[0-9]+\\b"
         # matches a word consisting entirely of non alphanumerics
         non.alpha <- "\\b[^A-Za-z0-9'\" ]+\\b"
-        out <- gsub(pattern = num.pattern, replace = "",
+        out <- gsub(pattern = num.pattern, replace = " ",
                     x = textcol)
-        out <- gsub(pattern = non.alpha, replace = "",
+        out <- gsub(pattern = non.alpha, replace = " ",
                     x = out)
         out
 }
@@ -72,6 +72,16 @@ tidyUp <- function (tbl){
 }
 
 
+tidyUpNgramN <- function (tbl, ngrams = 3){
+        replace_reg = "[^A-Za-z0-9 ]"
+        #removable <- "\\b[Ll][Oo][Ll]\\b |\\b[Rr][Tt]\\b "
+        out <- tbl %>% select(text) %>% 
+                mutate(text = str_replace_all(text, replace_reg, "")) %>% 
+                #mutate(text = str_replace_all(text, removable, "")) %>% 
+                unnest_tokens(ngram, text, token = "ngrams", n = ngrams)
+        out
+}
+
 tidyUpNgram <- function (tbl, ngrams = 3){
         replace_reg = "[^A-Za-z0-9 ]"
         removable <- "\\b[Ll][Oo][Ll]\\b |\\b[Rr][Tt]\\b "
@@ -83,12 +93,13 @@ tidyUpNgram <- function (tbl, ngrams = 3){
         
         out <- out %>% 
                 separate(ngram, c("word1", "word2", "word3"), sep = " ") %>%
-                filter(!(word1 %in% stop_words$word | 
-                                 word2 %in% stop_words$word | 
-                                 word3 %in% stop_words$word)) %>%
+                #filter(!(word1 %in% stop_words$word | 
+                #                 word2 %in% stop_words$word | 
+                #                 word3 %in% stop_words$word)) %>%
                 filter(!(word1 %in% swear$word | word2 %in% swear$word |
-                                 word3 %in% swear$word)) %>%
-                filter(!(word1 == word2 & word2 == word3))
+                                 word3 %in% swear$word)) %>% 
+                #%>%
+                #filter(!(word1 == word2 & word2 == word3))
                 #%>%
                 #filter(!(word1 %in% stop_words$word & 
                 #                 word3 %in% stop_words$word)) %>%
@@ -96,6 +107,7 @@ tidyUpNgram <- function (tbl, ngrams = 3){
                 #                 word2 %in% stop_words$word)) %>%
                 #filter(!(word2 %in% stop_words$word & 
                 #                 word3 %in% stop_words$word))
+                unite(ngram, word1:word3, sep = " ")
                 out
 }
 
@@ -289,5 +301,186 @@ barPlotIt <- function(tbl, intr = 0.005){
                 geom_hline(yintercept = intr, color = "gray80") + 
                 geom_text(aes(lbl.pos, intr), color = "gray60", 
                           label = c(percent(intr)), vjust = -0.5, size = 3)
+}
+
+igraphPlotIt <- function(bigram_graph){
+        a <- grid::arrow(type = "closed", length = unit(.1, "inches"))
+        
+        ggraph(bigram_graph, layout = "gem") +
+                geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                               arrow = a, end_cap = circle(.05, 'inches')) +
+                geom_node_point(size = 2, color = "lightblue") + 
+                geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+                theme_void()
+}
+
+createNgramList <- function(text.corpora, source, maxNGram = 4L, 
+                            minNGram = 1L){
+        out <- vector("list", length(minNGram:maxNGram))
+        clean.text <- text.corpora %>% cleanText()
+        #twitter.ngram$tidy <- tidyUpNgramN(twitter.ngram$clean, n = 2)
+        j <- 1
+        for(i in minNGram:maxNGram){
+                ngram.text <- tidyUpNgramN(clean.text, ngrams = i)
+                ngram.text <- ngram.text %>%
+                                count(ngram) 
+                if(i > 1){
+                        terms.col.names <- paste0("word", 1:(i-1))
+                        ngram.text <- ngram.text %>%
+                                separate(col = ngram,
+                                         into = c(terms.col.names, "outcome"),
+                                         sep = " ") %>%
+                                unite(col = "terms", terms.col.names, sep = " ")
+                        
+                }
+                else{
+                        ngram.text <- ngram.text %>% rename(outcome = ngram)
+                }
+                out[[j]] <- ngram.text
+                j <- j + 1
+        }
+        names(out) <- paste0("ngram", minNGram:maxNGram)
+        out
+}
+
+
+createNgramListSeparate <- function(text.corpora, source, maxNGram = 4L, 
+                            minNGram = 1L){
+        out <- vector("list", length(minNGram:maxNGram))
+        clean.text <- text.corpora %>% cleanText()
+        #twitter.ngram$tidy <- tidyUpNgramN(twitter.ngram$clean, n = 2)
+        j <- 1
+        for(i in minNGram:maxNGram){
+                ngram.text <- tidyUpNgramN(clean.text, ngrams = i)
+                ngram.text <- ngram.text %>%
+                        count(ngram) 
+                if(i > 1){
+                        terms.col.names <- paste0("word", 1:i)
+                        ngram.text <- ngram.text %>%
+                                separate(col = ngram,
+                                         into = c(terms.col.names),
+                                         sep = " ")
+                        
+                }
+                else{
+                        ngram.text <- ngram.text %>% rename(word1 = ngram)
+                }
+                out[[j]] <- ngram.text
+                j <- j + 1
+        }
+        names(out) <- paste0("ngram", minNGram:maxNGram)
+        out
+}
+formatSearchString <- function(s){
+        replace_reg = "[^A-Za-z0-9 ]"
+        out <- tolower(s)
+        out <- out %>% replaceQuotes() %>% removeNumbers() %>%
+                str_replace_all(replace_reg, "") %>%
+                trimws()
+        out
+}
+
+dropLastWord <- function(s){
+        out <- str_split(s, " ", simplify = TRUE)
+        out <- out[1:(length(out)-1)] %>%
+                paste(collapse = " ")
+        out
+}
+
+returnLastNWords <- function(s, n = 1, na.rm = TRUE){
+
+        if(n == 0){
+                out <- ifelse(na.rm, "", NA)
+        }
+        else if (n > getWordCount(s)){
+                out <- s
+        }
+        else{
+                out <- str_split(s, " ", simplify = TRUE)
+                out <- out[(length(out) - (n -1)):length(out)] %>%
+                paste(collapse = " ")
+        }
+        out
+        
+}
+
+returnFirstNWords <- function(s, n = 1, na.rm = TRUE){
+        
+        if(n == 0){
+                out <- ifelse(na.rm, "", NA)
+        }
+        else if (n > getWordCount(s)){
+                out <- s
+        }
+        else{
+                out <- str_split(s, " ", simplify = TRUE)
+                out <- out[1:n] %>%
+                        paste(collapse = " ")
+        }
+        out
+        
+}
+
+getOutcome <- function(data, search.string){
+        out <- data %>%
+                filter(terms == search.string) %>%
+                arrange(desc(n))
+        out
+}
+
+getWordCount <- function(search.string){
+        ind.words <- str_split(search.string, " ", simplify = TRUE)
+        num.words <- length(ind.words)
+        num.words
+}
+
+getNextWord <- function(search.string, ngramList, remove = TRUE, 
+                        simplify = TRUE){
+
+        num.ngram.models <- length(ngramList)
+        
+        srch <- formatSearchString(search.string)
+        
+        srch <- returnLastNWords(srch, num.ngram.models -1)
+        
+        num.words <- getWordCount(srch)
+        
+        filterlist <- ""
+        
+        if(simplify){
+                out <- NA
+        }
+        else{
+                out = vector("list", num.words)
+        }
+
+        for(i in num.words:1){
+                s <- returnLastNWords(srch, i)
+                message(s)
+                fnd <- getOutcome(ngramList[[(i+1)]], s) %>%
+                        mutate(ngram.match = i)
+                if (is.na(out) && nrow(fnd) > 0){
+                        out <- fnd
+                        filterlist <- out$outcome
+                }
+                else{
+                        if(remove){
+                                fnd <- fnd %>% filter(!outcome %in% filterlist)
+                        }
+                        if(simplify){
+                                if(nrow(fnd) > 0){
+                                        out <- bind_rows(out, fnd)
+                                }
+                        }
+                        else{
+                                out[[i]] <- fnd
+                        }
+                        
+                        filterlist <- c(filterlist, fnd$outcome)
+                }
+                
+        }
+
+        out
 }
 
