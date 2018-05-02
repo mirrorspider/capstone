@@ -1,0 +1,155 @@
+What's the Word?
+========================================================
+author: Alex Robinson
+date: 1st May 2018
+autosize: true
+
+```{r my.setup, echo = FALSE}
+require(gridExtra)
+require(readr)
+require(tidyr)
+require(dplyr)
+require(ggplot2)
+require(scales)
+```
+
+An Innovative Approach to Predictive Text
+========================================================
+
+Based on the Swiftkey/Coursera capstone corpus of data taken from US English 
+tweets, blog posts and news feeds.
+
+Searches an ngram model of 4 word combinations and prioritises matches using a 
+Katz backoff approach with Good-Turing discounting.
+
+Ngram model chosen to deliver the greatest predictive accuracy for the
+smallest memory footprint.
+
+The ability to return up to 6 values **increases** predictive accuracy from 16% 
+(for a single prediction) to 36% (for 6 values).
+
+Intuitive visualisations show the confidence of the prediction and allow 
+exploration of the sentence in context (by plotting the assembled Markov chain).
+
+Size and Accuracy
+========================================================
+
+```{r accuracy_plot, echo = FALSE, cache = TRUE, fig.width=20, fig.align = "center" }
+stats <- read_csv("./data/all_stats.csv")
+acc <- stats %>% select(percentage, exact.match, fuzzy.match) %>%
+        rename(exact = exact.match, fuzzy = fuzzy.match) %>%
+        gather(match.type, accuracy, -percentage)
+
+g0 <- ggplot(data = stats, aes(x = percentage, y = size.mb)) + 
+        geom_point() +
+        geom_smooth(method = "lm", color = "#66C2A580") +
+        xlab("percentage of data set") +
+        ylab("table size (MB)") +
+        scale_x_continuous(labels = percent) + 
+        ggtitle("Memory vs. Dataset Proportion") + 
+        theme_minimal()
+
+g <- ggplot(data = acc, aes(x = percentage, y = accuracy,
+                            color = match.type, fill = match.type)) + 
+        geom_point(color = "black", show.legend = FALSE) + 
+        geom_smooth(method = "loess", method.args = list(degree = 1)) +
+        scale_fill_discrete(name = "Match type") +
+        scale_color_discrete(name = "Match type") + 
+        geom_vline(xintercept = 0.08, linetype = "dashed") + 
+        geom_hline(yintercept = 0.36, linetype = "dashed", colour = "#00BFC4") + 
+        geom_hline(yintercept = 0.16, linetype = "dashed", colour = "#F8766D") + 
+        xlab("percentage of data set") +
+        scale_x_continuous(labels = percent) + 
+        ggtitle("Accuracy vs. Dataset Proportion") + 
+        theme_minimal()
+
+grid.arrange(g0, g, nrow = 1, padding = unit(1, "line"))
+```
+
+Although memory requirements are (at low levels) directly proportional to the
+proportion of the dataset used, accuracy shows diminishing returns beyond around
+8% of the dataset.
+
+***Fuzzy*** matching: one of top 6 words is correct; ***Exact*** matching: 
+top word is correct
+
+```{r markovPrep, echo = FALSE, cache = FALSE }
+source("../NextWord/lib/nextword.R", chdir = TRUE)
+source("../NextWord/lib/plotting.R", chdir = TRUE)
+source("../NextWord/lib/backoff.R", chdir = TRUE)
+source("../NextWord/lib/markov.R", chdir = TRUE)
+```
+```{r getDataFile, echo = FALSE, cache = TRUE }
+ng <- read_csv("../NextWord/data/ngram_008.csv")
+
+```
+
+```{r markovPrep2, echo = FALSE, cache = TRUE }
+wd <- getNextWordSlim("i like to", ng)
+p <- calcProbability(wd, 6)
+m <- assembleChainData(p, ng)
+```
+
+Prediction Output
+========================================================
+
+Given the sentence "***i like to***" the following results are produced:
+<div align="center">
+
+```{r confidenceOut, echo = FALSE }
+require(kableExtra)
+t1 <- p %>% select(outcome, prob, ngram.match) %>% 
+        mutate(prob = round(prob,3)) %>% t()
+colnames(t1) <- c("1st", "2nd", "3rd", "4th", "5th", "6th")
+rownames(t1) <- c("prediction", "confidence", "matched")
+t1 %>% knitr::kable(format = "html") 
+```
+
+</div>
+
+```{r confidencePlot, echo = FALSE, fig.height = 2, fig.width = 10, fig.align = "center" }
+t2 <- p %>% select(outcome, prob, ngram.match)
+t2 <- data_frame(choice = 1:6,
+                 confidence = t2$prob,
+                 label = t2$outcome)
+g <- plotConfidence(t2)
+g
+```
+
+The graph shows a visual representation of the likelihood that the provided
+predictions are accurate.
+
+Green curves indicate reasonable confidence, amber
+(as here) indicate some confidence and red indicate little confidence.
+
+Markov Visualisation
+========================================================
+
+```{r markovOut, echo = FALSE, fig.align = "center", fig.width = 20 }
+plotMarkov(m)
+```
+
+An optional visualisation of the Markov chain for the sentence can be produced.
+
+This shows the matched ngram words ("provided"), the predictions ("predicted")
+and frequently occurring words associated with either end of the chain 
+("associated").
+
+Appendix
+========================================================
+
+## Future Improvements
+
+- Sentiment and grammatical analysis to narrow/improve search
+
+## References
+
+**Chen, S. F. & Goodman, J.** - 1999 - *An empirical study of smoothing 
+techniques for language modeling* - http://u.cs.biu.ac.il/~yogo/courses/mt2013/papers/chen-goodman-99.pdf
+
+
+**Silge, J. & Robinson, D.** - 2018 - *Text Mining with R* - https://www.tidytextmining.com/index.html
+
+**Thach, TRAN Ngoc** - 2016 - *Katz's Backoff Model Implementation in R* - https://thachtranerc.wordpress.com/2016/04/12/katzs-backoff-model-implementation-in-r/
+
+
